@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Записи сообщества {{ group.title }}{% endblock %}
+{% block header %}{{ group.title }}{% endblock %}
+{% block content %}
+    <div class="container">
+        <p>{{ group.description }}</p>
+        {% for post in page %}
+            <p>{% include "includes/post_card.html" with post=post %}</p>
+        {% endfor %}
+    </div>
+        {% if page.has_other_pages %}
+            {% include "includes/paginator.html" with items=page paginator=paginator%}
+        {% endif %}
+
+{% endblock %} 
