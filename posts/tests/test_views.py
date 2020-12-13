@@ -1,5 +1,4 @@
 import shutil
-import tempfile
 from django.conf import settings
 
 from django import forms
@@ -7,11 +6,10 @@ from django import forms
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.cache import cache
 
-from django.test import override_settings
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from posts.models import Comment, Post, Group, User
+from posts.models import Comment, Post, Group, User, Follow
 
 INDEX_URL = reverse("index")
 NEW_POST_URL = reverse("new_post")
@@ -47,11 +45,25 @@ class PostPagesTests(TestCase):
         self.authorized_client2 = Client()
         self.authorized_client2.force_login(self.user2)
 
+        small_gif = (
+            b'\x47\x49\x46\x38\x39\x61\x02\x00'
+            b'\x01\x00\x80\x00\x00\x00\x00\x00'
+            b'\xFF\xFF\xFF\x21\xF9\x04\x00\x00'
+            b'\x00\x00\x00\x2C\x00\x00\x00\x00'
+            b'\x02\x00\x01\x00\x00\x02\x02\x0C'
+            b'\x0A\x00\x3B'
+        )
+        img = SimpleUploadedFile(
+            name="small.gif",
+            content=small_gif,
+            content_type="image/gif"
+        )
         self.post = Post.objects.create(
             text="Тестовый текст",
             author=self.user,
             pub_date="01.01.2020",
             group=PostPagesTests.group,
+            image=img,
         )
 
     def test_pages_uses_correct_template(self):
@@ -126,24 +138,9 @@ class PostPagesTests(TestCase):
         post = response.context.get("page")[0]
         self.assertEqual(post, self.post)
 
-    @override_settings(MEDIA_ROOT=tempfile.gettempdir())
     def test_images_on_page(self):
-        small_gif = (
-            b'\x47\x49\x46\x38\x39\x61\x02\x00'
-            b'\x01\x00\x80\x00\x00\x00\x00\x00'
-            b'\xFF\xFF\xFF\x21\xF9\x04\x00\x00'
-            b'\x00\x00\x00\x2C\x00\x00\x00\x00'
-            b'\x02\x00\x01\x00\x00\x02\x02\x0C'
-            b'\x0A\x00\x3B'
-        )
-        img = SimpleUploadedFile(
-            name="small.gif",
-            content=small_gif,
-            content_type="image/gif"
-        )
-        cache.clear()
         group_response = self.authorized_client.get(
-                reverse("group", kwargs={"slug": "test"})
+                reverse("group", kwargs={"slug": self.group.slug})
         )
         profile_response = self.authorized_client.get(
                 reverse(
@@ -154,40 +151,15 @@ class PostPagesTests(TestCase):
         index_response = self.authorized_client.get(
                 reverse("index")
         )
-        index_image = index_response.content.decode().count("<img")
-        group_image = group_response.content.decode().count("<img")
-        profile_image = profile_response.content.decode().count("<img")
-        Post.objects.create(
-            text="Image test",
-            author=self.user,
-            group=self.group,
-            image=img
-        )
-        cache.clear()
-        group_response = self.authorized_client.get(
-                reverse("group", kwargs={"slug": "test"})
-        )
-        profile_response = self.authorized_client.get(
-                reverse(
-                    "profile",
-                    kwargs={"username": self.user.username}
-                )
-        )
-        index_response = self.authorized_client.get(
-                reverse("index")
-        )
-        index_image_post = index_response.content.decode().count("<img")
-        group_image_post = group_response.content.decode().count("<img")
-        profile_image_post = profile_response.content.decode().count("<img")
-        self.assertGreater(index_image_post, index_image)
-        self.assertGreater(group_image_post, group_image)
-        self.assertGreater(profile_image_post, profile_image)
-        for value, expected in form_fields.items():
-            with self.subTest(value=value):
-                form_field = response.context.get("form").fields.get(value)
-                self.assertIsInstance(form_field, expected)
+        index_image_post = index_response.context.get("page")[0].image
+        group_image_post = group_response.context.get("page")[0].image
+        profile_image_post = profile_response.context.get("page")[0].image
+        self.assertTrue(index_image_post)
+        self.assertTrue(group_image_post)
+        self.assertTrue(profile_image_post)
 
     def test_comments(self):
+        comment_count = Comment.objects.count()
         form_data = {
             "author": self.user,
             "post": self.post,
@@ -208,6 +180,7 @@ class PostPagesTests(TestCase):
             follow=True,
         )
         post_comment = Comment.objects.first()
+        self.assertEqual(Comment.objects.count(), comment_count + 1)
         self.assertEqual(post_comment.text, "Comment test")
         self.assertEqual(post_comment.author, self.user)
         self.assertEqual(post_comment.post, self.post)
@@ -219,23 +192,30 @@ class PostPagesTests(TestCase):
                     kwargs={"username": self.user}))
         response = self.authorized_client2.get(reverse("follow_index"))
         follow_post = response.context.get("page")[0]
-        self.assertEqual(follow_post.text, self.post.text)
-        self.assertEqual(follow_post.author, self.user)
-        self.assertEqual(follow_post.group, self.group)
+        self.assertEqual(follow_post, self.post)
 
-    def test_user_can_follow_unfollow(self):
-        """Пользователь может подписываться и отписываться"""
+    def test_nonfollow_index(self):
+        response2 = self.authorized_client2.get(reverse("follow_index"))
+        follow_post = response2.context.get("page")
+        self.assertNotEqual(follow_post, self.post)
+
+    def test_user_can_follow(self):
+        """Пользователь может подписываться"""
         self.authorized_client2.get(
             reverse("profile_follow",
                     kwargs={"username": self.user}))
-        profile_url = reverse("profile", args=[self.user.username])
-        response = self.authorized_client2.get(profile_url)
-        self.assertEqual(response.context["followers"], 1)
+        follows = Follow.objects.filter(
+            user=self.user2, author=self.user).count()
+        self.assertEqual(follows, 1)
+
+    def test_user_can_unfollow(self):
+        """Пользователь может отписываться"""
         self.authorized_client2.get(
             reverse("profile_unfollow",
                     kwargs={"username": self.user}))
-        response2 = self.authorized_client2.get(profile_url)
-        self.assertEqual(response2.context["followers"], 0) 
+        follows = Follow.objects.filter(
+            user=self.user2, author=self.user).count()
+        self.assertEqual(follows, 0)
 
     def cache_test(self):
         client = self.authorized_client

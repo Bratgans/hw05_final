@@ -7,7 +7,7 @@
             {{ author.username }}
         </div>
     </div>
-    {% if user != author %}
+    {% if user != author and not post %}
     <li class="list-group-item">
         {% if following %}
         <a class="btn btn-lg btn-light" 

@@ -55,18 +55,14 @@ def profile(request, username):
     paginator = Paginator(posts, 10)
     page_number = request.GET.get("page")
     page = paginator.get_page(page_number)
-    followers = author.following.count()
-    follows = author.follower.count()
     following = request.user.is_authenticated and Follow.objects.filter(
-        author=author.id,
-        user=request.user.id).exists()
-    return render(request, 'profile.html', {
-            'author': author,
-            'page': page,
-            'paginator': paginator,
-            'followers': followers,
-            'follows': follows,
-            'following': following,
+        author=author,
+        user=request.user).exists()
+    return render(request, "profile.html", {
+            "author": author,
+            "page": page,
+            "paginator": paginator,
+            "following": following,
         })
 
 
@@ -113,8 +109,8 @@ def add_comment(request, username, post_id):
                        "author": author,
                        "post": post})
     new_comment = form.save(commit=False)
-    new_comment.author_id = request.user.id
-    new_comment.post_id = post.id
+    new_comment.author = request.user
+    new_comment.post = post
     new_comment.save()
     return redirect("post", username, post_id)
 
@@ -149,7 +145,7 @@ def profile_follow(request, username):
 def profile_unfollow(request, username):
     author = get_object_or_404(User, username=username)
     unfollow = Follow.objects.filter(user=request.user,
-                                     author=author or None)
+                                     author=author)
     if unfollow.exists():
         unfollow.delete()
     return redirect("profile", username)
