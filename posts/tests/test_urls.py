@@ -120,7 +120,8 @@ class PostURLTests(TestCase):
 
     def test_comment_unauthorized_user(self):
         response = self.guest_client.get(reverse("add_comment",
-                                              args=(self.user1, self.post.id)))
+                                                 args=(self.user1,
+                                                       self.post.id)))
         self.assertEqual(response.status_code, 302)
 
     def test_404(self):

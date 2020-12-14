@@ -139,51 +139,16 @@ class PostPagesTests(TestCase):
         self.assertEqual(post, self.post)
 
     def test_images_on_page(self):
-        group_response = self.authorized_client.get(
-                reverse("group", kwargs={"slug": self.group.slug})
-        )
-        profile_response = self.authorized_client.get(
-                reverse(
-                    "profile",
-                    kwargs={"username": self.user.username}
-                )
-        )
-        index_response = self.authorized_client.get(
-                reverse("index")
-        )
-        index_image_post = index_response.context.get("page")[0].image
-        group_image_post = group_response.context.get("page")[0].image
-        profile_image_post = profile_response.context.get("page")[0].image
-        self.assertTrue(index_image_post)
-        self.assertTrue(group_image_post)
-        self.assertTrue(profile_image_post)
-
-    def test_comments(self):
-        comment_count = Comment.objects.count()
-        form_data = {
-            "author": self.user,
-            "post": self.post,
-            "text": "Comment test",
-        }
-        self.guest_client.post(
-            reverse("add_comment", kwargs={
-                "username": self.post.author.username,
-                "post_id": self.post.id
-            }), data=form_data, follow=True,)
-        self.authorized_client.post(
-            reverse("add_comment",
-                    kwargs={
-                        "username": self.post.author.username,
-                        "post_id": self.post.id
-                    }),
-            data=form_data,
-            follow=True,
-        )
-        post_comment = Comment.objects.first()
-        self.assertEqual(Comment.objects.count(), comment_count + 1)
-        self.assertEqual(post_comment.text, "Comment test")
-        self.assertEqual(post_comment.author, self.user)
-        self.assertEqual(post_comment.post, self.post)
+        reverse_name = [
+            reverse("group", kwargs={"slug": self.group.slug}),
+            reverse("profile", kwargs={"username": self.user.username}),
+            reverse("index")
+        ]
+        for reverse_name in reverse_name:
+            with self.subTest(reverse_name=reverse_name):
+                response = self.authorized_client.get(reverse_name)
+                image_context = response.context["page"][0].image
+                self.assertTrue(image_context)
 
     def test_follow_index(self):
         """Новая запись пользователя появляется в ленте подписчика"""
@@ -195,9 +160,8 @@ class PostPagesTests(TestCase):
         self.assertEqual(follow_post, self.post)
 
     def test_nonfollow_index(self):
-        response2 = self.authorized_client2.get(reverse("follow_index"))
-        follow_post = response2.context.get("page")
-        self.assertNotEqual(follow_post, self.post)
+        response = self.authorized_client2.get(reverse("follow_index"))
+        self.assertFalse(response.context["page"])
 
     def test_user_can_follow(self):
         """Пользователь может подписываться"""
@@ -205,17 +169,18 @@ class PostPagesTests(TestCase):
             reverse("profile_follow",
                     kwargs={"username": self.user}))
         follows = Follow.objects.filter(
-            user=self.user2, author=self.user).count()
-        self.assertEqual(follows, 1)
+            user=self.user2, author=self.user).exists()
+        self.assertTrue(follows)
 
     def test_user_can_unfollow(self):
         """Пользователь может отписываться"""
-        self.authorized_client2.get(
-            reverse("profile_unfollow",
-                    kwargs={"username": self.user}))
-        follows = Follow.objects.filter(
-            user=self.user2, author=self.user).count()
-        self.assertEqual(follows, 0)
+        if Follow.objects.filter(user=self.user2, author=self.user).exists():
+            self.authorized_client2.get(
+                reverse("profile_unfollow",
+                        kwargs={"username": self.user}))
+            follows = Follow.objects.filter(
+                user=self.user2, author=self.user).exists()
+            self.assertFalse(follows)
 
     def cache_test(self):
         client = self.authorized_client

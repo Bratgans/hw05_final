@@ -17,6 +17,7 @@ class PostCreateFormTests(TestCase):
     def setUpClass(cls):
         super().setUpClass()
 
+        cls.guest_client = Client()
         cls.user = User.objects.create(username="tester")
         cls.authorized_client = Client()
         cls.authorized_client.force_login(cls.user)
@@ -91,3 +92,41 @@ class PostCreateFormTests(TestCase):
             "post", args=[self.user, post.id]))
         self.assertEqual(post.text, form_data["text"])
         self.assertEqual(Post.objects.count(), post_count)
+
+    def test_comments_authorized_client(self):
+        """Авторизированный пользователь может комментировать"""
+        comment_count = Comment.objects.count()
+        form_data = {
+            "author": self.user,
+            "post": self.post,
+            "text": "Comment test",
+        }
+        self.authorized_client.post(
+            reverse("add_comment",
+                    kwargs={
+                        "username": self.post.author.username,
+                        "post_id": self.post.id
+                    }),
+            data=form_data,
+            follow=True,
+        )
+        post_comment = Comment.objects.first()
+        self.assertEqual(Comment.objects.count(), comment_count + 1)
+        self.assertEqual(post_comment.text, "Comment test")
+        self.assertEqual(post_comment.author, self.user)
+        self.assertEqual(post_comment.post, self.post)
+
+    def test_comments_unauthorized_client(self):
+        """Невторизированный пользователь не может комментировать"""
+        form_data = {
+            "author": self.user,
+            "post": self.post,
+            "text": "Comment test",
+        }
+        self.guest_client.post(
+            reverse("add_comment", kwargs={
+                "username": self.post.author.username,
+                "post_id": self.post.id
+            }), data=form_data, follow=True,)
+        post_comment = Comment.objects.exists()
+        self.assertFalse(post_comment)
