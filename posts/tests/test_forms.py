@@ -128,5 +128,5 @@ class PostCreateFormTests(TestCase):
                 "username": self.post.author.username,
                 "post_id": self.post.id
             }), data=form_data, follow=True,)
-        post_comment = Comment.objects.exists()
-        self.assertFalse(post_comment)
+        post_comment = Comment.objects.count()
+        self.assertEqual(post_comment, 0)

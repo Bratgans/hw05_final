@@ -168,19 +168,20 @@ class PostPagesTests(TestCase):
         self.authorized_client2.get(
             reverse("profile_follow",
                     kwargs={"username": self.user}))
-        follows = Follow.objects.filter(
-            user=self.user2, author=self.user).exists()
-        self.assertTrue(follows)
+        follow = Follow.objects.first()
+        count = Follow.objects.count()
+        self.assertEqual(count, 1)
+        self.assertEqual(follow.user, self.user2)
+        self.assertEqual(follow.author, self.user)
 
     def test_user_can_unfollow(self):
         """Пользователь может отписываться"""
-        if Follow.objects.filter(user=self.user2, author=self.user).exists():
-            self.authorized_client2.get(
-                reverse("profile_unfollow",
-                        kwargs={"username": self.user}))
-            follows = Follow.objects.filter(
-                user=self.user2, author=self.user).exists()
-            self.assertFalse(follows)
+        Follow.objects.create(user=self.user2, author=self.user)
+        self.authorized_client2.get(
+            reverse("profile_unfollow",
+                    kwargs={"username": self.user}))
+        count = Follow.objects.count()
+        self.assertEqual(count, 0)
 
     def cache_test(self):
         client = self.authorized_client
